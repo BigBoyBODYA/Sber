@@ -21,7 +21,7 @@
             </div>
         </div>
 
-        <!-- Поле ввода и кнопка отправки -->
+        <!-- Поле ввода и кнопки отправки -->
         <div class="input-container">
             <div class="input-wrapper">
                 <input 
@@ -31,6 +31,28 @@
                     class="message-input"
                     :disabled="isLoading"
                 />
+
+                <button 
+                    @click="toggleVoiceInput"
+                    :class="['voice-button', { 'recording': isRecording }]"
+                    type="button"
+                    :disabled="isLoading"
+                    title="Голосовой ввод"
+                >
+                    <img 
+                        v-if="!isRecording" 
+                        :src="microphoneIcon" 
+                        alt="Голосовой ввод" 
+                        class="voice-icon"
+                    />
+                    <img 
+                        v-else 
+                        :src="recordingIcon" 
+                        alt="Идет запись" 
+                        class="voice-icon recording"
+                    />
+                </button>
+
                 <button 
                     @click="sendMessage" 
                     :disabled="!newMessage.trim() || isLoading"
@@ -39,12 +61,20 @@
                     <span v-if="!isLoading">Отправить</span>
                     <span v-else>Отправка...</span>
                 </button>
+                
+            </div>
+            <!-- Индикатор голосового ввода -->
+            <div v-if="isRecording" class="voice-status">
+                Говорите... {{ recordingTime }}с
             </div>
         </div>
     </div>
 </template>
 
 <script>
+import microphoneIcon from '../assets/microphone.svg';
+import recordingIcon from '../assets/microphone.svg';
+
 export default {
     name: 'ChatWindow',
     
@@ -58,7 +88,13 @@ export default {
                 }
             ],
             newMessage: '',
-            isLoading: false
+            isLoading: false,
+            isRecording: false,
+            recognition: null,
+            recordingTime: 0,
+            recordingTimer: null,
+            microphoneIcon: microphoneIcon,
+            recordingIcon: recordingIcon
         }
     },
     
@@ -112,6 +148,79 @@ export default {
             }
         },
         
+        // ОСНОВНАЯ ФУНКЦИЯ - ВКЛ/ВЫКЛ ПРИ ПОВТОРНОМ НАЖАТИИ
+        toggleVoiceInput() {
+            if (this.isRecording) {
+                this.stopVoiceRecognition(); // ВЫКЛЮЧЕНИЕ при повторном нажатии
+            } else {
+                this.startVoiceRecognition(); // ВКЛЮЧЕНИЕ
+            }
+        },
+
+        startVoiceRecognition() {
+            // Проверка поддержки браузером
+            if (!('webkitSpeechRecognition' in window)) {
+                alert('Голосовой ввод не поддерживается вашим браузером');
+                return;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            this.recognition = new SpeechRecognition();
+            
+            // Минимальные настройки
+            this.recognition.continuous = false;
+            this.recognition.interimResults = true;
+            this.recognition.lang = 'ru-RU';
+
+            // Начало записи
+            this.recognition.onstart = () => {
+                this.isRecording = true;
+                this.recordingTime = 0;
+                this.recordingTimer = setInterval(() => {
+                    this.recordingTime++;
+                }, 1000);
+            };
+
+            // Получение результата
+            this.recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                this.newMessage = transcript;
+            };
+
+            // Ошибки
+            this.recognition.onerror = (event) => {
+                if (event.error === 'not-allowed') {
+                    alert('Разрешите доступ к микрофону');
+                }
+                this.stopVoiceRecognition();
+            };
+
+            // Автозавершение (если браузер сам закончил запись)
+            this.recognition.onend = () => {
+                this.stopVoiceRecognition();
+            };
+
+            // Запуск
+            this.recognition.start();
+        },
+
+        // ОТКЛЮЧЕНИЕ ЗАПИСИ - вызывается при повторном нажатии
+        stopVoiceRecognition() {
+            if (this.recognition) {
+                this.recognition.stop();
+            }
+            this.isRecording = false;
+            if (this.recordingTimer) {
+                clearInterval(this.recordingTimer);
+                this.recordingTimer = null;
+            }
+        },
+
+
+
         scrollToBottom() {
             const container = this.$refs.messagesContainer;
             if (container) {
@@ -129,6 +238,10 @@ export default {
     
     mounted() {
         this.scrollToBottom();
+    },
+
+    beforeUnmount() {
+        this.stopVoiceRecognition();
     }
 }
 </script>
@@ -144,11 +257,12 @@ export default {
     border-radius: 10px;
     overflow: hidden;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    font-family: 'Sans', sans-serif;
+    font-family: Helvetica;
 }
 
 .chat-header {
-    background-color: #4a90e2;
+    background: linear-gradient(175deg,rgba(39, 179, 39, 1) 21%,
+     rgba(87, 199, 133, 1) 60%, rgba(186, 242, 121, 1) 90%);
     color: white;
     padding: 15px 20px;
     text-align: center;
@@ -189,7 +303,7 @@ export default {
 }
 
 .message.user .message-content {
-    background-color: #4a90e2;
+    background-color: #27B327;
     color: white;
     border-bottom-right-radius: 5px;
 }
@@ -287,5 +401,92 @@ export default {
 
 .messages-container::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
+}
+
+/* Стили для кнопки голосового ввода */
+.voice-button {
+    padding: 12px;
+    background-color: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 50%;
+    cursor: pointer;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.voice-button:hover:not(:disabled) {
+    background-color: #e0e0e0;
+    transform: scale(1.05);
+}
+
+.voice-button.recording {
+    background-color: #ff4444;
+    border-color: #ff4444;
+}
+
+.voice-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.voice-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    transition: all 0.3s ease;
+    /* Если SVG содержит встроенные цвета, можно инвертировать для hover */
+    filter: brightness(0.5);
+}
+
+.voice-button:hover .voice-icon {
+    transform: scale(1.1);
+    filter: brightness(0.3);
+}
+
+.voice-button.recording .voice-icon {
+    filter: brightness(0) invert(1); /* Делает иконку белой на красном фоне */
+}
+
+.voice-icon.recording {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.voice-status {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+}
+
+.send-button {
+    padding: 12px 20px;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+    white-space: nowrap;
 }
 </style>
