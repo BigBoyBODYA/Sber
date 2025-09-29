@@ -94,7 +94,8 @@ export default {
             recordingTime: 0,
             recordingTimer: null,
             microphoneIcon: microphoneIcon,
-            recordingIcon: recordingIcon
+            recordingIcon: recordingIcon,
+            apiUrl: 'http://localhost:5000/chat' // URL вашего локального сервера
         }
     },
     
@@ -111,7 +112,7 @@ export default {
             
             this.messages.push(userMessage);
             const messageToSend = this.newMessage.trim();
-            this.newMessage = '';
+            this.newMessage = ''; // Очищаем поле ввода сразу после отправки
             this.isLoading = true;
             
             // Прокрутка к нижней части чата
@@ -120,22 +121,31 @@ export default {
             });
 
             try {
-                // Здесь будет вызов к API нейросети
-                // Временно имитируем ответ
-                setTimeout(() => {
-                    const botMessage = {
-                        text: `Это имитация ответа нейросети на ваш запрос: "${messageToSend}". В реальном приложении здесь будет ответ от API.`,
-                        type: 'bot',
-                        timestamp: new Date()
-                    };
-                    
-                    this.messages.push(botMessage);
-                    this.isLoading = false;
-                    
-                    this.$nextTick(() => {
-                        this.scrollToBottom();
-                    });
-                }, 1000);
+                // Отправка POST-запроса на локальный сервер
+                const response = await fetch(this.apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: messageToSend
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Добавляем ответ от нейросети
+                const botMessage = {
+                    text: data.response || data.message || 'Ответ от нейросети',
+                    type: 'bot',
+                    timestamp: new Date()
+                };
+                
+                this.messages.push(botMessage);
                 
             } catch (error) {
                 console.error('Ошибка при отправке сообщения:', error);
@@ -144,7 +154,12 @@ export default {
                     type: 'bot',
                     timestamp: new Date()
                 });
+            } finally {
                 this.isLoading = false;
+                
+                this.$nextTick(() => {
+                    this.scrollToBottom();
+                });
             }
         },
         
@@ -219,8 +234,6 @@ export default {
             }
         },
 
-
-
         scrollToBottom() {
             const container = this.$refs.messagesContainer;
             if (container) {
@@ -247,6 +260,7 @@ export default {
 </script>
 
 <style scoped>
+/* Стили остаются без изменений */
 .chat-container {
     display: flex;
     flex-direction: column;
